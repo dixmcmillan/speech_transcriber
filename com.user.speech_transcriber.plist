@@ -6,7 +6,7 @@
     <string>com.user.speech_transcriber</string>
     <key>ProgramArguments</key>
     <array>
-        <string>/usr/bin/python3</string>
+        <string>/Users/dixon/code/whisper/speech_transcriber/venv/bin/python</string>
         <string>/Users/dixon/code/whisper/speech_transcriber/main.py</string>
     </array>
     <key>RunAtLoad</key>

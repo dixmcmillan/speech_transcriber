@@ -5,6 +5,7 @@ import time
 import threading
 import numpy as np
 import queue
+import argparse
 from pathlib import Path
 from typing import Optional
 from pynput import keyboard
@@ -25,6 +26,8 @@ RECORDING_DIR = os.path.join(os.path.expanduser("~"), "Downloads", "Transcriptio
 TOGGLE_COMBOS = [
     # Option 1: Hyper+` (original)
     {keyboard.Key.cmd, keyboard.Key.ctrl, keyboard.Key.alt, keyboard.Key.shift, keyboard.KeyCode.from_char('`')},
+    # Option 2: Just F12 for easier testing
+    {keyboard.Key.f12},
 ]
 
 class SpeechTranscriber:
@@ -90,6 +93,7 @@ class SpeechTranscriber:
         print("First press of hotkey starts recording, second press stops and transcribes")
         print("Toggle options:")
         print("1. Hyper + ` (Command+Control+Option+Shift+`)")
+        print("2. F12 key (added for easier testing)")
         print("Press Ctrl+C to exit completely")
         
         try:
@@ -169,13 +173,14 @@ class SpeechTranscriber:
     
     def on_key_press(self, key):
         """Handle key press events for hotkey detection."""
+        # print(f"Key pressed: {key}")  # Debug: Print every key press
         self.current_keys.add(key)
         
         # Check if any of our toggle combinations match
         for combo in TOGGLE_COMBOS:
             if self.current_keys.issuperset(combo):
                 if not hasattr(self, 'last_toggle_time') or time.time() - self.last_toggle_time > 0.5:
-                    print(f"Toggle key combination detected!")
+                   # print(f"Toggle key combination detected! {combo}")
                     self.toggle()
                     # Debounce toggle to prevent double-activation
                     self.last_toggle_time = time.time()
@@ -184,15 +189,90 @@ class SpeechTranscriber:
     def on_key_release(self, key):
         """Handle key release events."""
         try:
+
             self.current_keys.remove(key)
         except KeyError:
             pass
 
+def transcribe_file(file_path, output_file=None, print_output=False):
+    """
+    Transcribe an audio file and save to file and/or print.
+    
+    Args:
+        file_path: Path to the audio file to transcribe
+        output_file: Path to save transcription as text file (auto-generated if None)
+        print_output: Whether to print the transcription to terminal
+    """
+    print(f"\n--- Speech Transcriber - File Mode ---")
+    print(f"Transcribing file: {file_path}")
+    
+    # Auto-generate output filename if not provided
+    if output_file is None:
+        audio_path = Path(file_path)
+        output_file = str(audio_path.with_suffix('.txt'))
+        print(f"Will save transcription to: {output_file}")
+    else:
+        print(f"Will save transcription to: {output_file}")
+    
+    # Initialize just the transcriber
+    transcriber = Transcriber(
+        model_name=MODEL_NAME,
+        device=DEVICE,
+        language=LANGUAGE
+    )
+    
+    # Load the model
+    transcriber.load_model()
+    
+    transcription_text = None
+    
+    # Callback to capture and optionally print the transcription
+    def handle_transcription(text):
+        nonlocal transcription_text
+        transcription_text = text
+        
+        if print_output:
+            print("\nTranscription:")
+            print("-" * 40)
+            print(text)
+            print("-" * 40)
+    
+    # Set callback
+    transcriber.set_transcription_callback(handle_transcription)
+    
+    try:
+        # Transcribe the file
+        result = transcriber.transcribe_file(file_path)
+        if not result:
+            print("Transcription failed.")
+        elif transcription_text:
+            # Save to text file
+            try:
+                with open(output_file, 'w', encoding='utf-8') as f:
+                    f.write(transcription_text)
+                print(f"Transcription saved to: {output_file}")
+            except Exception as e:
+                print(f"Error saving transcription to file: {e}")
+    finally:
+        # Clean up
+        transcriber.unload_model()
+
 def main():
     """Main entry point."""
-    # Create and start the transcriber
-    transcriber = SpeechTranscriber()
-    transcriber.start()
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description="Speech Transcriber")
+    parser.add_argument("--file", "-f", help="Path to audio file to transcribe")
+    parser.add_argument("--output", "-o", help="Path to save transcription as text file")
+    parser.add_argument("--print", "-p", action="store_true", help="Print the transcription to terminal")
+    args = parser.parse_args()
+    
+    if args.file:
+        # File transcription mode
+        transcribe_file(args.file, args.output, args.print)
+    else:
+        # Real-time transcription mode
+        transcriber = SpeechTranscriber()
+        transcriber.start()
 
 if __name__ == "__main__":
     main()
